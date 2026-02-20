@@ -7,63 +7,95 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     exit();
 }
 
-// Controllo se il nome del convegno è stato passato in GET
-if (!isset($_GET['nomeConvegno']) || empty($_GET['nomeConvegno'])) {
-    die("Errore: nessun convegno selezionato.");
+try {
+    $conn = new PDO("mysql:host=127.0.0.1;dbname=convegni;charset=utf8", "root", "");
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+    // Recupero tutti i convegni per la select
+    $stmt = $conn->prepare("SELECT id, nome FROM convegni");
+    $stmt->execute();
+    $convegni = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    $partecipantiData = [];
+
+    // Se è stato selezionato un convegno
+    if (isset($_GET['convegno_id']) && !empty($_GET['convegno_id'])) {
+
+        $convegno_id = $_GET['convegno_id'];
+
+        // Recupero partecipanti del convegno selezionato
+        $stmt = $conn->prepare("
+            SELECT p.nome, p.cognome, p.email, p.cf
+            FROM partecipanti p
+            INNER JOIN partecipano pa ON p.id = pa.partecipante_id
+            WHERE pa.convegno_id = :convegno_id
+        ");
+
+        $stmt->bindParam(':convegno_id', $convegno_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $partecipantiData = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+} catch (PDOException $e) {
+    die("Errore di connessione: " . $e->getMessage());
 }
-
-// Nome del file JSON
-$file = $_GET['nomeConvegno'] . '.json';
-
-// Controllo che il file esista
-if (!file_exists($file)) {
-    die("Errore: il convegno non esiste.");
-}
-
-// Leggo e decodifico i dati
-$partecipantiData = json_decode(file_get_contents($file), true);
-
 ?>
+
 <!DOCTYPE html>
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualizza Convegno: <?php echo htmlspecialchars($_GET['nomeConvegno']); ?></title>
+    <title>Visualizza Convegni</title>
     <style>
         table { border-collapse: collapse; width: 80%; margin: 20px auto; }
         th, td { border: 1px solid #333; padding: 8px; text-align: left; }
         th { background-color: #eee; }
+        form { text-align: center; margin-top: 30px; }
     </style>
 </head>
 <body>
-    <h1>Partecipanti del convegno: <?php echo htmlspecialchars($_GET['nomeConvegno']); ?></h1>
 
-    <?php if (!empty($partecipantiData)) : ?>
-        <table>
-            <thead>
+<h1 style="text-align:center;">Seleziona un Convegno</h1>
+
+<form method="GET">
+    <select name="convegno_id" required>
+        <option value="">-- Seleziona --</option>
+        <?php foreach ($convegni as $c): ?>
+            <option value="<?php echo $c['id']; ?>"
+                <?php if (isset($_GET['convegno_id']) && $_GET['convegno_id'] == $c['id']) echo "selected"; ?>>
+                <?php echo htmlspecialchars($c['nome']); ?>
+            </option>
+        <?php endforeach; ?>
+    </select>
+    <button type="submit">Visualizza</button>
+</form>
+
+<?php if (!empty($partecipantiData)) : ?>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Nome</th>
+                <th>Cognome</th>
+                <th>Email</th>
+                <th>CF</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php foreach ($partecipantiData as $index => $p) : ?>
                 <tr>
-                    <th>#</th>
-                    <th>Nome</th>
-                    <th>Cognome</th>
-                    <th>Email</th>
-                    <th>CF</th>
+                    <td><?php echo $index + 1; ?></td>
+                    <td><?php echo htmlspecialchars($p['nome']); ?></td>
+                    <td><?php echo htmlspecialchars($p['cognome']); ?></td>
+                    <td><?php echo htmlspecialchars($p['email']); ?></td>
+                    <td><?php echo htmlspecialchars($p['cf']); ?></td>
                 </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($partecipantiData as $index => $p) : ?>
-                    <tr>
-                        <td><?php echo $index + 1; ?></td>
-                        <td><?php echo htmlspecialchars($p['nome']); ?></td>
-                        <td><?php echo htmlspecialchars($p['cognome']); ?></td>
-                        <td><?php echo htmlspecialchars($p['email']); ?></td>
-                        <td><?php echo htmlspecialchars($p['cf']); ?></td>
-                    </tr>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-    <?php else : ?>
-        <p>Nessun partecipante registrato per questo convegno.</p>
-    <?php endif; ?>
+            <?php endforeach; ?>
+        </tbody>
+    </table>
+<?php elseif (isset($_GET['convegno_id'])) : ?>
+    <p style="text-align:center;">Nessun partecipante registrato per questo convegno.</p>
+<?php endif; ?>
+
 </body>
 </html>
